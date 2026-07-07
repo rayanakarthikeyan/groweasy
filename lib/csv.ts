@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import type { PreviewRow } from "@/lib/types";
+import type { PreviewRow } from "./types";
 
 export function parseCsvBuffer(buffer: Buffer): PreviewRow[] {
   const content = buffer.toString("utf-8");
