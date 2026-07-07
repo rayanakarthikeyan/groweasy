@@ -1,103 +1,3 @@
-  }
-
-  const leadNote = joinNotes([
-    findValue(record, ["note", "remark", "comment", "follow"]),
-    emails.slice(1).length > 0 ? `Extra emails: ${emails.slice(1).join(", ")}` : "",
-    extraPhones.length > 0 ? `Extra phones: ${extraPhones.join(", ")}` : "",
-    findValue(record, ["alternate email", "secondary email", "alt email"]),
-    findValue(record, ["alternate phone", "secondary phone", "alt phone"])
-  ]);
-
-  const rawStatus = findValue(record, ["status", "stage", "result"]).toLowerCase();
-  const crm_status =
-    allowedCRMStatuses.find((status) => rawStatus.includes(status.toLowerCase())) ||
-    (rawStatus.includes("busy") || rawStatus.includes("call back")
-      ? "DID_NOT_CONNECT"
-      : rawStatus.includes("close") || rawStatus.includes("won")
-        ? "SALE_DONE"
-        : rawStatus.includes("bad") || rawStatus.includes("junk")
-          ? "BAD_LEAD"
-          : rawStatus
-            ? "GOOD_LEAD_FOLLOW_UP"
-            : "");
-
-  const rawSource = findValue(record, ["source", "campaign", "project"]).toLowerCase();
-  const data_source =
-    allowedDataSources.find((item) => item && rawSource.includes(item.replaceAll("_", " "))) || "";
-
-  return crmRecordSchema.parse({
-    created_at: normalizeDate(findValue(record, ["created", "date", "timestamp", "added"])),
-    name: findValue(record, ["name", "lead", "customer", "client"]),
-    email: emails[0] ?? "",
-    country_code,
-    mobile_without_country_code,
-    company: findValue(record, ["company", "organization", "business"]),
-    city: findValue(record, ["city"]),
-    state: findValue(record, ["state", "province", "region"]),
-    country: findValue(record, ["country"]),
-    lead_owner: findValue(record, ["owner", "assigned", "agent", "manager"]),
-    crm_status,
-    crm_note: leadNote,
-    data_source,
-    possession_time: findValue(record, ["possession"]),
-    description: findValue(record, ["description", "details", "message", "requirement"])
-  });
-}
-
-function buildPrompt(records: Array<{ rowNumber: number; source: PreviewRow }>) {
-  return `
-You are an expert CRM data normalizer.
-
-Transform each CSV row into GrowEasy CRM format.
-
-Rules:
-- Return valid JSON only.
-- Output shape: {"records":[{"rowNumber":1,"record":{...},"skip":false,"reason":""}]}
-- Each record must contain only these keys:
-  created_at,name,email,country_code,mobile_without_country_code,company,city,state,country,lead_owner,crm_status,crm_note,data_source,possession_time,description
-- Use only these crm_status values: ${allowedCRMStatuses.join(", ")}
-- Use only these data_source values: ${allowedDataSources.filter(Boolean).join(", ")}
-- If data_source is not confident, return empty string.
-- created_at must be parseable by JavaScript Date.
-- If multiple emails exist, keep the first email and append others to crm_note.
-- If multiple mobile numbers exist, keep the first mobile and append others to crm_note.
-- Put remarks, follow up notes, extra numbers, extra emails, and useful leftovers into crm_note.
-- Do not introduce line breaks inside field values. Use escaped \\n only when required.
-- Skip records with neither an email nor a mobile number.
-- Never invent values that are not reasonably inferable.
-
-Rows:
-${JSON.stringify(records)}
-`;
-}
-
-function stripCodeFences(text: string) {
-  const trimmed = text.trim();
-
-  if (trimmed.startsWith("```") && trimmed.endsWith("```")) {
-    return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  }
-
-  return trimmed;
-}
-
-function extractGeminiText(payload: unknown) {
-  if (!payload || typeof payload !== "object") {
-    return "";
-  }
-
-  const maybeSteps = Reflect.get(payload, "steps");
-  if (Array.isArray(maybeSteps)) {
-    for (let index = maybeSteps.length - 1; index >= 0; index -= 1) {
-      const step = maybeSteps[index];
-      if (!step || typeof step !== "object") {
-        continue;
-      }
-
-      const content = Reflect.get(step, "content");
-      if (!Array.isArray(content)) {
-        continue;
-      }
 
       const text = content
         .map((part) => (part && typeof part === "object" ? Reflect.get(part, "text") : ""))
@@ -248,3 +148,12 @@ export async function importCsvRecords(rows: PreviewRow[]): Promise<ImportApiRes
     records,
     skipped,
     meta: {
+      importedCount: records.length,
+      skippedCount: skipped.length,
+      processedCount: rows.length,
+      batchCount: Math.ceil(rows.length / batchSize),
+      usedModel,
+      mode
+    }
+  };
+}
