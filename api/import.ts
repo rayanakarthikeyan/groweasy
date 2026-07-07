@@ -1,8 +1,8 @@
 import express from "express";
 import multer from "multer";
 import serverless from "serverless-http";
-import { parseCsvBuffer } from "@/lib/csv";
-import { importCsvRecords } from "@/lib/importer";
+import { parseCsvBuffer } from "../lib/csv";
+import { importCsvRecords } from "../lib/importer";
 
 const app = express();
 const upload = multer({
