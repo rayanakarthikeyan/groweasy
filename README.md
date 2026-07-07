@@ -24,6 +24,7 @@ An internship-assignment-ready CSV importer that accepts messy lead files, previ
 - Invalid record skipping when both email and mobile are missing
 - Clean result summary with skipped-row reasons
 - Production-safe `/api/import` route for Vercel
+- Automatic fallback from overloaded Gemini models to `gemini-2.5-flash`
 
 ## CRM Rules Implemented
 
@@ -62,7 +63,7 @@ copy .env.example .env.local
 
 ```bash
 GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 4. Start the app:
@@ -77,7 +78,7 @@ Deploy the repo directly to Vercel.
 
 Required environment variables:
 - `GEMINI_API_KEY`
-- optional `GEMINI_MODEL` set to `gemini-3.5-flash`
+- optional `GEMINI_MODEL` set to `gemini-2.5-flash`
 
 Health check route:
 - `/api/health`

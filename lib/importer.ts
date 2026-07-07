@@ -4,6 +4,7 @@ import type { CRMRecord, ImportApiResponse, PreviewRow, SkippedRecord } from "./
 const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const phoneRegex = /\+?\d[\d\s()-]{7,}\d/g;
 const batchSize = 12;
+const fallbackGeminiModel = "gemini-2.5-flash";
 
 const cityLocationLookup: Record<string, { state: string; country: string }> = {
   mumbai: { state: "Maharashtra", country: "India" },
@@ -272,13 +273,12 @@ function extractGeminiText(payload: unknown) {
   return typeof outputText === "string" ? outputText : "";
 }
 
-async function callGemini(records: Array<{ rowNumber: number; source: PreviewRow }>) {
+async function requestGemini(model: string, records: Array<{ rowNumber: number; source: PreviewRow }>) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return null;
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
     method: "POST",
     headers: {
@@ -322,11 +322,41 @@ async function callGemini(records: Array<{ rowNumber: number; source: PreviewRow
   };
 }
 
+function shouldRetryWithFallback(error: unknown, primaryModel: string) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    primaryModel !== fallbackGeminiModel &&
+    error.message.includes("Gemini request failed with status 500")
+  );
+}
+
+async function callGemini(records: Array<{ rowNumber: number; source: PreviewRow }>) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const primaryModel = process.env.GEMINI_MODEL || fallbackGeminiModel;
+
+  try {
+    return await requestGemini(primaryModel, records);
+  } catch (error) {
+    if (!shouldRetryWithFallback(error, primaryModel)) {
+      throw error;
+    }
+
+    return await requestGemini(fallbackGeminiModel, records);
+  }
+}
+
 function getAIConfig() {
   if (process.env.GEMINI_API_KEY) {
     return {
       provider: "gemini" as const,
-      model: process.env.GEMINI_MODEL || "gemini-3.5-flash"
+      model: process.env.GEMINI_MODEL || fallbackGeminiModel
     };
   }
 
