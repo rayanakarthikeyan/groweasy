@@ -1,5 +1,5 @@
-import { crmRecordSchema, allowedCRMStatuses, allowedDataSources } from "@/lib/crm";
-import type { CRMRecord, ImportApiResponse, PreviewRow, SkippedRecord } from "@/lib/types";
+import { crmRecordSchema, allowedCRMStatuses, allowedDataSources } from "./crm";
+import type { CRMRecord, ImportApiResponse, PreviewRow, SkippedRecord } from "./types";
 
 const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const phoneRegex = /\+?\d[\d\s()-]{7,}\d/g;
