@@ -1,103 +1,3 @@
-import { crmRecordSchema, allowedCRMStatuses, allowedDataSources } from "@/lib/crm";
-import type { CRMRecord, ImportApiResponse, PreviewRow, SkippedRecord } from "@/lib/types";
-
-const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-const phoneRegex = /\+?\d[\d\s()-]{7,}\d/g;
-const batchSize = 12;
-
-function cleanValue(value: unknown) {
-  return String(value ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function lowerKeys(record: PreviewRow) {
-  return Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [key.toLowerCase(), cleanValue(value)])
-  );
-}
-
-function findValue(record: Record<string, string>, candidates: string[]) {
-  for (const [key, value] of Object.entries(record)) {
-    if (!value) {
-      continue;
-    }
-
-    if (candidates.some((candidate) => key.includes(candidate))) {
-      return value;
-    }
-  }
-
-  return "";
-}
-
-function splitPhones(rawValues: string[]) {
-  const matches = rawValues.flatMap((value) => value.match(phoneRegex) ?? []);
-
-  if (matches.length === 0) {
-    return {
-      country_code: "",
-      mobile_without_country_code: "",
-      extraPhones: [] as string[]
-    };
-  }
-
-  const normalized = matches.map((value) => value.replace(/[^\d+]/g, ""));
-  const [first, ...rest] = normalized;
-
-  if (first.startsWith("+")) {
-    const digits = first.slice(1);
-
-    if (digits.length > 10) {
-      return {
-        country_code: `+${digits.slice(0, digits.length - 10)}`,
-        mobile_without_country_code: digits.slice(-10),
-        extraPhones: rest
-      };
-    }
-
-    return {
-      country_code: "",
-      mobile_without_country_code: digits,
-      extraPhones: rest
-    };
-  }
-
-  return {
-    country_code: "",
-    mobile_without_country_code: first,
-    extraPhones: rest
-  };
-}
-
-function normalizeDate(raw: string) {
-  if (!raw) {
-    return "";
-  }
-
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toISOString();
-}
-
-function joinNotes(parts: string[]) {
-  return parts
-    .map((part) => cleanValue(part))
-    .filter(Boolean)
-    .join(" | ");
-}
-
-function heuristicExtract(source: PreviewRow): CRMRecord | null {
-  const record = lowerKeys(source);
-  const allValues = Object.values(record);
-  const emails = allValues.flatMap((value) => value.match(emailRegex) ?? []);
-  const { country_code, mobile_without_country_code, extraPhones } = splitPhones(allValues);
-
-  if (emails.length === 0 && !mobile_without_country_code) {
-    return null;
   }
 
   const leadNote = joinNotes([
@@ -171,104 +71,89 @@ ${JSON.stringify(records)}
 `;
 }
 
-async function callOpenAI(records: Array<{ rowNumber: number; source: PreviewRow }>) {
-  const apiKey = process.env.OPENAI_API_KEY;
+function stripCodeFences(text: string) {
+  const trimmed = text.trim();
+
+  if (trimmed.startsWith("```") && trimmed.endsWith("```")) {
+    return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  }
+
+  return trimmed;
+}
+
+function extractGeminiText(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const maybeSteps = Reflect.get(payload, "steps");
+  if (Array.isArray(maybeSteps)) {
+    for (let index = maybeSteps.length - 1; index >= 0; index -= 1) {
+      const step = maybeSteps[index];
+      if (!step || typeof step !== "object") {
+        continue;
+      }
+
+      const content = Reflect.get(step, "content");
+      if (!Array.isArray(content)) {
+        continue;
+      }
+
+      const text = content
+        .map((part) => (part && typeof part === "object" ? Reflect.get(part, "text") : ""))
+        .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+        .join("");
+
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  const outputText = Reflect.get(payload, "output_text");
+  return typeof outputText === "string" ? outputText : "";
+}
+
+async function callGemini(records: Array<{ rowNumber: number; source: PreviewRow }>) {
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return null;
   }
 
-  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      "x-goog-api-key": apiKey,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
       model,
+      system_instruction:
+        "You convert messy CRM exports into strict JSON. Return valid JSON only with no markdown fences.",
       input: buildPrompt(records),
-      text: {
-        format: {
-          type: "json_schema",
-          name: "groweasy_import_response",
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              records: {
-                type: "array",
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    rowNumber: { type: "number" },
-                    skip: { type: "boolean" },
-                    reason: { type: "string" },
-                    record: {
-                      type: "object",
-                      additionalProperties: false,
-                      properties: {
-                        created_at: { type: "string" },
-                        name: { type: "string" },
-                        email: { type: "string" },
-                        country_code: { type: "string" },
-                        mobile_without_country_code: { type: "string" },
-                        company: { type: "string" },
-                        city: { type: "string" },
-                        state: { type: "string" },
-                        country: { type: "string" },
-                        lead_owner: { type: "string" },
-                        crm_status: { type: "string" },
-                        crm_note: { type: "string" },
-                        data_source: { type: "string" },
-                        possession_time: { type: "string" },
-                        description: { type: "string" }
-                      },
-                      required: [
-                        "created_at",
-                        "name",
-                        "email",
-                        "country_code",
-                        "mobile_without_country_code",
-                        "company",
-                        "city",
-                        "state",
-                        "country",
-                        "lead_owner",
-                        "crm_status",
-                        "crm_note",
-                        "data_source",
-                        "possession_time",
-                        "description"
-                      ]
-                    }
-                  },
-                  required: ["rowNumber", "skip", "reason", "record"]
-                }
-              }
-            },
-            required: ["records"]
-          }
-        }
+      generation_config: {
+        temperature: 0.1,
+        thinking_level: "low"
       }
     })
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI request failed with status ${response.status}.`);
+    const errorBody = await response.text();
+    throw new Error(`Gemini request failed with status ${response.status}: ${errorBody}`);
   }
 
-  const payload = (await response.json()) as {
-    output_text?: string;
-  };
+  const payload = (await response.json()) as unknown;
+  const outputText = stripCodeFences(extractGeminiText(payload));
 
-  if (!payload.output_text) {
-    throw new Error("OpenAI response was empty.");
+  if (!outputText) {
+    throw new Error("Gemini response was empty.");
   }
 
   return {
     model,
-    data: JSON.parse(payload.output_text) as {
+    data: JSON.parse(outputText) as {
       records: Array<{
         rowNumber: number;
         skip: boolean;
@@ -276,6 +161,20 @@ async function callOpenAI(records: Array<{ rowNumber: number; source: PreviewRow
         record: CRMRecord;
       }>;
     }
+  };
+}
+
+function getAIConfig() {
+  if (process.env.GEMINI_API_KEY) {
+    return {
+      provider: "gemini" as const,
+      model: process.env.GEMINI_MODEL || "gemini-3.5-flash"
+    };
+  }
+
+  return {
+    provider: "heuristic" as const,
+    model: "heuristic"
   };
 }
 
@@ -287,12 +186,13 @@ export async function importCsvRecords(rows: PreviewRow[]): Promise<ImportApiRes
 
   const records: CRMRecord[] = [];
   const skipped: SkippedRecord[] = [];
-  let mode: "ai" | "heuristic" = process.env.OPENAI_API_KEY ? "ai" : "heuristic";
-  let usedModel = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const aiConfig = getAIConfig();
+  let mode: "ai" | "heuristic" = aiConfig.provider === "gemini" ? "ai" : "heuristic";
+  let usedModel = aiConfig.model;
 
   for (let index = 0; index < indexedRows.length; index += batchSize) {
     const batch = indexedRows.slice(index, index + batchSize);
-    const aiResult = process.env.OPENAI_API_KEY ? await callOpenAI(batch) : null;
+    const aiResult = aiConfig.provider === "gemini" ? await callGemini(batch) : null;
 
     if (!aiResult) {
       mode = "heuristic";
@@ -348,12 +248,3 @@ export async function importCsvRecords(rows: PreviewRow[]): Promise<ImportApiRes
     records,
     skipped,
     meta: {
-      importedCount: records.length,
-      skippedCount: skipped.length,
-      processedCount: rows.length,
-      batchCount: Math.ceil(rows.length / batchSize),
-      usedModel,
-      mode
-    }
-  };
-}
