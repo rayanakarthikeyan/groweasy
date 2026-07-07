@@ -8,7 +8,7 @@ An internship-assignment-ready CSV importer that accepts messy lead files, previ
 - Express upload API deployed as a Vercel serverless function
 - TypeScript across the full project
 - Papa Parse for CSV parsing
-- OpenAI Responses API for AI extraction
+- Gemini API for AI extraction
 - Heuristic fallback mode when no API key is configured
 - Vitest for unit coverage on normalization logic
 
@@ -55,11 +55,11 @@ npm install
 copy .env.example .env.local
 ```
 
-3. Add your OpenAI key in `.env.local`:
+3. Add your Gemini key in `.env.local`:
 
 ```bash
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4.1-mini
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-3.5-flash
 ```
 
 4. Start the app:
@@ -76,10 +76,10 @@ Deploy the repo directly to Vercel.
 
 - Framework: Next.js
 - Environment variable required for AI mode:
-  - `OPENAI_API_KEY`
-  - optional `OPENAI_MODEL`
+  - `GEMINI_API_KEY`
+  - optional `GEMINI_MODEL`
 
-If you deploy without an OpenAI key, the importer still works in heuristic mode, but the strongest evaluation outcome will come from enabling AI mode.
+If you deploy without a Gemini key, the importer still works in heuristic mode, but the strongest evaluation outcome will come from enabling AI mode.
 
 ## Scripts
 
