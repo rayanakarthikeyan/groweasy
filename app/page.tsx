@@ -174,7 +174,16 @@ export default function HomePage() {
             body: formData
           });
 
-          const payload = (await response.json()) as ImportApiResponse | { error: string };
+          const raw = await response.text();
+          let payload: ImportApiResponse | { error: string };
+
+          try {
+            payload = JSON.parse(raw) as ImportApiResponse | { error: string };
+          } catch {
+            throw new Error(
+              `Server returned non-JSON response (${response.status}): ${raw.slice(0, 200)}`
+            );
+          }
 
           if (!response.ok) {
             const message = "error" in payload ? payload.error : "Import failed.";
