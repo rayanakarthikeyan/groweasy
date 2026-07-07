@@ -5,6 +5,18 @@ const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const phoneRegex = /\+?\d[\d\s()-]{7,}\d/g;
 const batchSize = 12;
 
+const cityLocationLookup: Record<string, { state: string; country: string }> = {
+  mumbai: { state: "Maharashtra", country: "India" },
+  bangalore: { state: "Karnataka", country: "India" },
+  bengaluru: { state: "Karnataka", country: "India" },
+  delhi: { state: "Delhi", country: "India" },
+  pune: { state: "Maharashtra", country: "India" },
+  hyderabad: { state: "Telangana", country: "India" },
+  chennai: { state: "Tamil Nadu", country: "India" },
+  kolkata: { state: "West Bengal", country: "India" },
+  ahmedabad: { state: "Gujarat", country: "India" }
+};
+
 function cleanValue(value: unknown) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -90,6 +102,50 @@ function joinNotes(parts: string[]) {
     .join(" | ");
 }
 
+function normalizeCountryCode(countryCode: string, mobile: string) {
+  const trimmed = cleanValue(countryCode);
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("+")) {
+    return trimmed;
+  }
+
+  if (/^\d+$/.test(trimmed) && mobile.length >= 10) {
+    return `+${trimmed}`;
+  }
+
+  return trimmed;
+}
+
+function inferLocation(city: string, state: string, country: string) {
+  const normalizedCity = cleanValue(city).toLowerCase();
+  const inferred = cityLocationLookup[normalizedCity];
+
+  return {
+    state: cleanValue(state) || inferred?.state || "",
+    country: cleanValue(country) || inferred?.country || ""
+  };
+}
+
+function normalizeRecord(record: CRMRecord) {
+  const normalized = crmRecordSchema.parse(record);
+  const location = inferLocation(normalized.city, normalized.state, normalized.country);
+
+  return crmRecordSchema.parse({
+    ...normalized,
+    country_code: normalizeCountryCode(
+      normalized.country_code,
+      normalized.mobile_without_country_code
+    ),
+    state: location.state,
+    country: location.country,
+    created_at: normalizeDate(normalized.created_at)
+  });
+}
+
 function heuristicExtract(source: PreviewRow): CRMRecord | null {
   const record = lowerKeys(source);
   const allValues = Object.values(record);
@@ -125,23 +181,25 @@ function heuristicExtract(source: PreviewRow): CRMRecord | null {
   const data_source =
     allowedDataSources.find((item) => item && rawSource.includes(item.replaceAll("_", " "))) || "";
 
-  return crmRecordSchema.parse({
-    created_at: normalizeDate(findValue(record, ["created", "date", "timestamp", "added"])),
-    name: findValue(record, ["name", "lead", "customer", "client"]),
-    email: emails[0] ?? "",
-    country_code,
-    mobile_without_country_code,
-    company: findValue(record, ["company", "organization", "business"]),
-    city: findValue(record, ["city"]),
-    state: findValue(record, ["state", "province", "region"]),
-    country: findValue(record, ["country"]),
-    lead_owner: findValue(record, ["owner", "assigned", "agent", "manager"]),
-    crm_status,
-    crm_note: leadNote,
-    data_source,
-    possession_time: findValue(record, ["possession"]),
-    description: findValue(record, ["description", "details", "message", "requirement"])
-  });
+  return normalizeRecord(
+    crmRecordSchema.parse({
+      created_at: normalizeDate(findValue(record, ["created", "date", "timestamp", "added"])),
+      name: findValue(record, ["name", "lead", "customer", "client"]),
+      email: emails[0] ?? "",
+      country_code,
+      mobile_without_country_code,
+      company: findValue(record, ["company", "organization", "business"]),
+      city: findValue(record, ["city"]),
+      state: findValue(record, ["state", "province", "region"]),
+      country: findValue(record, ["country"]),
+      lead_owner: findValue(record, ["owner", "assigned", "agent", "manager"]),
+      crm_status,
+      crm_note: leadNote,
+      data_source,
+      possession_time: findValue(record, ["possession"]),
+      description: findValue(record, ["description", "details", "message", "requirement"])
+    })
+  );
 }
 
 function buildPrompt(records: Array<{ rowNumber: number; source: PreviewRow }>) {
@@ -327,7 +385,7 @@ export async function importCsvRecords(rows: PreviewRow[]): Promise<ImportApiRes
         continue;
       }
 
-      const parsedRecord = crmRecordSchema.parse(item.record);
+      const parsedRecord = normalizeRecord(item.record);
       const hasEmail = cleanValue(parsedRecord.email) !== "";
       const hasMobile = cleanValue(parsedRecord.mobile_without_country_code) !== "";
 

@@ -1,16 +1,17 @@
 # GrowEasy AI CSV Importer
 
-An internship-assignment-ready CSV importer that accepts messy lead files, previews them on the frontend, and converts records into GrowEasy CRM format through an Express-powered backend with AI extraction support.
+An internship-assignment-ready CSV importer that accepts messy lead files, previews them on the frontend, and converts records into GrowEasy CRM format through a production-safe Next.js backend route with AI extraction support.
 
 ## Stack
 
 - Next.js App Router frontend
-- Express upload API deployed as a Vercel serverless function
+- Node.js backend via Next.js route handlers
 - TypeScript across the full project
 - Papa Parse for CSV parsing
 - Gemini API for AI extraction
 - Heuristic fallback mode when no API key is configured
 - Vitest for unit coverage on normalization logic
+- Vercel deployment ready
 
 ## Features
 
@@ -22,7 +23,7 @@ An internship-assignment-ready CSV importer that accepts messy lead files, previ
 - Batched record processing
 - Invalid record skipping when both email and mobile are missing
 - Clean result summary with skipped-row reasons
-- Vercel-friendly single-repo deployment
+- Production-safe `/api/import` route for Vercel
 
 ## CRM Rules Implemented
 
@@ -40,6 +41,8 @@ An internship-assignment-ready CSV importer that accepts messy lead files, previ
 - Records without both email and mobile are skipped.
 - Extra emails and phone numbers are pushed into `crm_note`.
 - `created_at` is normalized into an ISO string when possible.
+- Common city names are used to infer `state` and `country` when missing.
+- Numeric country codes are normalized to include `+` where appropriate.
 
 ## Local Setup
 
@@ -68,24 +71,33 @@ GEMINI_MODEL=gemini-3.5-flash
 npm run dev
 ```
 
-This project uses `vercel dev` so both the Next.js frontend and the Express API run together locally.
-
 ## Deployment
 
 Deploy the repo directly to Vercel.
 
-- Framework: Next.js
-- Environment variable required for AI mode:
-  - `GEMINI_API_KEY`
-  - optional `GEMINI_MODEL`
+Required environment variables:
+- `GEMINI_API_KEY`
+- optional `GEMINI_MODEL` set to `gemini-3.5-flash`
 
-If you deploy without a Gemini key, the importer still works in heuristic mode, but the strongest evaluation outcome will come from enabling AI mode.
+Health check route:
+- `/api/health`
+
+Primary import route:
+- `/api/import`
 
 ## Scripts
 
-- `npm run dev` - local Vercel development
+- `npm run dev` - local development
 - `npm run build` - production build
 - `npm run test` - run unit tests
+
+## Submission Checklist
+
+- Public GitHub repository
+- Public Vercel deployment
+- Gemini environment variables configured in Vercel
+- README with setup and deployment instructions
+- CSV import tested with both sample and messy real-world headers
 
 ## Sample File
 

@@ -20,12 +20,16 @@ describe("importCsvRecords", () => {
         "Lead Name": "John Doe",
         Email: "john@example.com",
         Phone: "+91 9876543210",
+        City: "Mumbai",
         Remarks: "Asked for callback"
       }
     ]);
 
     expect(result.records).toHaveLength(1);
     expect(result.records[0]?.email).toBe("john@example.com");
+    expect(result.records[0]?.country_code).toBe("+91");
     expect(result.records[0]?.mobile_without_country_code).toBe("9876543210");
+    expect(result.records[0]?.state).toBe("Maharashtra");
+    expect(result.records[0]?.country).toBe("India");
   });
 });
