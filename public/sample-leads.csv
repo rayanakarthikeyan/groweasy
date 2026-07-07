@@ -1,0 +1,4 @@
+Created Date,Customer Name,Primary Email,Phone,Company Name,City,Lead Status,Notes,Campaign
+2026-05-13 14:20:48,John Doe,john.doe@example.com,+91 9876543210,GrowEasy,Mumbai,GOOD_LEAD_FOLLOW_UP,Client asked to reschedule demo,leads_on_demand
+2026-05-13 14:25:30,Sarah Johnson,sarah.johnson@example.com,+91 9876543211,Tech Solutions,Bangalore,DID_NOT_CONNECT,Busy and requested callback,meridian_tower
+2026-05-13 14:30:15,Rajesh Patel,rajesh.patel@example.com,+91 9876543212,Startup Inc,Delhi,BAD_LEAD,Not interested,eden_park
